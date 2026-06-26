@@ -2,10 +2,12 @@ import os
 from dotenv import load_dotenv
 from langchain_community.document_loaders import PyPDFDirectoryLoader, PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-# Swapped heavy FastEmbed for cloud-based GroqEmbeddings
-from langchain_groq import ChatGroq, GroqEmbeddings
+from langchain_groq import ChatGroq
 from langchain_chroma import Chroma
 from langchain_core.prompts import PromptTemplate
+
+# Swapped local embedders for Hugging Face Cloud Inference API
+from langchain_huggingface import HuggingFaceEndpointEmbeddings
 
 # Load environment variables from .env
 load_dotenv()
@@ -15,9 +17,12 @@ class EpidemicRAGEngine:
         self.db_path = db_path
         self.data_dir = data_dir
         
-        # 1. Initialize Cloud-Based Free Embeddings (0 MB RAM usage on Streamlit server)
-        # Using the standard, highly accurate text-embedding-ada-002 style equivalent
-        self.embeddings = GroqEmbeddings(model_name="text-embedding-ada-002")
+        # 1. Initialize Serverless Cloud Embeddings (0 MB RAM usage on Streamlit server)
+        # It calls Hugging Face's API infrastructure directly
+        self.embeddings = HuggingFaceEndpointEmbeddings(
+            model="sentence-transformers/all-MiniLM-L6-v2",
+            huggingfacehub_api_token=os.getenv("HF_TOKEN")
+        )
         
         # 2. Initialize our Vector DB instance
         self.vector_db = None
@@ -44,7 +49,7 @@ class EpidemicRAGEngine:
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=700, chunk_overlap=100)
         chunks = text_splitter.split_documents(documents)
         
-        print(f"🧩 Split guidelines into {len(chunks)} chunks. Generating embeddings via Groq API...")
+        print(f"🧩 Split guidelines into {len(chunks)} chunks. Generating embeddings via Hugging Face API...")
         
         # Create and persist the vector store
         self.vector_db = Chroma.from_documents(
