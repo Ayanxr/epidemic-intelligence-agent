@@ -2,13 +2,10 @@ import os
 from dotenv import load_dotenv
 from langchain_community.document_loaders import PyPDFDirectoryLoader, PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.embeddings import FastEmbedEmbeddings
+# Swapped heavy FastEmbed for cloud-based GroqEmbeddings
+from langchain_groq import ChatGroq, GroqEmbeddings
 from langchain_chroma import Chroma
-from langchain_groq import ChatGroq
 from langchain_core.prompts import PromptTemplate
-
-# IMPORT CHROMA CONFIG TO DISABLE TELEMETRY
-from chromadb.config import Settings
 
 # Load environment variables from .env
 load_dotenv()
@@ -18,14 +15,14 @@ class EpidemicRAGEngine:
         self.db_path = db_path
         self.data_dir = data_dir
         
-        # 1. Initialize Open-Source, Free Embeddings (FastEmbed runs locally without an API key)
-        self.embeddings = FastEmbedEmbeddings(model_name="BAAI/bge-small-en-v1.5")
+        # 1. Initialize Cloud-Based Free Embeddings (0 MB RAM usage on Streamlit server)
+        # Using the standard, highly accurate text-embedding-ada-002 style equivalent
+        self.embeddings = GroqEmbeddings(model_name="text-embedding-ada-002")
         
         # 2. Initialize our Vector DB instance
         self.vector_db = None
         
         # 3. Initialize the Groq LLM for evaluation and generation
-        # Using llama-3.1-8b-instant as it's fast and highly capable of structured JSON output
         self.llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0)
 
     def initialize_global_knowledge(self):
@@ -47,31 +44,25 @@ class EpidemicRAGEngine:
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=700, chunk_overlap=100)
         chunks = text_splitter.split_documents(documents)
         
-        print(f"🧩 Split guidelines into {len(chunks)} chunks. Generating embeddings...")
+        print(f"🧩 Split guidelines into {len(chunks)} chunks. Generating embeddings via Groq API...")
         
-        # Create and persist the vector store with telemetry explicit disabled
+        # Create and persist the vector store
         self.vector_db = Chroma.from_documents(
             documents=chunks,
             embedding=self.embeddings,
-            persist_directory=self.db_path,
-            client_settings=Settings(anonymized_telemetry=False)
+            persist_directory=self.db_path
         )
         print("✅ Global Knowledge Base successfully loaded and stored in Vector DB!")
 
     def load_user_pdf(self, file_path):
         """Dynamically ingests a local incident report (PDF or TXT) uploaded by a user."""
         if not self.vector_db:
-            self.vector_db = Chroma(
-                persist_directory=self.db_path, 
-                embedding_function=self.embeddings,
-                client_settings=Settings(anonymized_telemetry=False)
-            )
+            self.vector_db = Chroma(persist_directory=self.db_path, embedding_function=self.embeddings)
             
         print(f"📥 Processing user-uploaded report: {file_path}")
         
         # Robust fallback checking for file extension types
         if file_path.endswith('.txt') or file_path.endswith('.pdf') and os.path.getsize(file_path) < 2000:
-            # If a PDF is tiny or it's a text file, parse it safely as raw string data
             from langchain_core.documents import Document
             try:
                 with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
@@ -89,7 +80,6 @@ class EpidemicRAGEngine:
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=600, chunk_overlap=50)
         chunks = text_splitter.split_documents(documents)
         
-        # Tag chunks as 'user_upload' via metadata to keep track of sources
         for chunk in chunks:
             chunk.metadata["source"] = "user_upload"
             
@@ -99,11 +89,7 @@ class EpidemicRAGEngine:
     def retrieve_context_with_score(self, query):
         """Retrieves documents, grades their alignment to the query, and generates an accuracy score."""
         if not self.vector_db:
-            self.vector_db = Chroma(
-                persist_directory=self.db_path, 
-                embedding_function=self.embeddings,
-                client_settings=Settings(anonymized_telemetry=False)
-            )
+            self.vector_db = Chroma(persist_directory=self.db_path, embedding_function=self.embeddings)
             
         # Fetch the top 4 most relevant chunks
         docs = self.vector_db.similarity_search(query, k=4)
@@ -136,18 +122,15 @@ class EpidemicRAGEngine:
         chain = prompt | self.llm
         
         try:
-            # Enforce structured JSON generation
             response = chain.invoke({"query": query, "context": context})
             import json
             evaluation = json.loads(response.content)
-            evaluation["context"] = context # Attach raw text for downstream steps
+            evaluation["context"] = context
             return evaluation
         except Exception as e:
             print(f"Error during self-correction evaluation step: {e}")
-            # Safe default fallback if JSON parsing fails
             return {"accuracy_score": 50, "is_sufficient": False, "context": context}
 
-# Quick validation routine when executing the script directly
 if __name__ == "__main__":
     engine = EpidemicRAGEngine()
     engine.initialize_global_knowledge()
