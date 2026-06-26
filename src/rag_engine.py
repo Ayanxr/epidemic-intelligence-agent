@@ -6,8 +6,8 @@ from langchain_groq import ChatGroq
 from langchain_chroma import Chroma
 from langchain_core.prompts import PromptTemplate
 
-# Swapped local embedders for Hugging Face Cloud Inference API
-from langchain_huggingface import HuggingFaceEndpointEmbeddings
+# Light, cloud-serverless alternative to bypass torch/transformers installation errors
+from langchain_community.embeddings import HuggingFaceHubEmbeddings
 
 # Load environment variables from .env
 load_dotenv()
@@ -17,10 +17,10 @@ class EpidemicRAGEngine:
         self.db_path = db_path
         self.data_dir = data_dir
         
-        # 1. Initialize Serverless Cloud Embeddings (0 MB RAM usage on Streamlit server)
-        # It calls Hugging Face's API infrastructure directly
-        self.embeddings = HuggingFaceEndpointEmbeddings(
-            model="sentence-transformers/all-MiniLM-L6-v2",
+        # 1. Initialize Serverless Cloud Embeddings via Hugging Face Hub
+        # (Uses 0MB RAM on the web server; requires no heavy local deep-learning packages!)
+        self.embeddings = HuggingFaceHubEmbeddings(
+            repo_id="sentence-transformers/all-MiniLM-L6-v2",
             huggingfacehub_api_token=os.getenv("HF_TOKEN")
         )
         
@@ -28,6 +28,7 @@ class EpidemicRAGEngine:
         self.vector_db = None
         
         # 3. Initialize the Groq LLM for evaluation and generation
+        # Using llama-3.1-8b-instant as it's fast and highly capable of structured JSON output
         self.llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0)
 
     def initialize_global_knowledge(self):
@@ -49,7 +50,7 @@ class EpidemicRAGEngine:
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=700, chunk_overlap=100)
         chunks = text_splitter.split_documents(documents)
         
-        print(f"🧩 Split guidelines into {len(chunks)} chunks. Generating embeddings via Hugging Face API...")
+        print(f"🧩 Split guidelines into {len(chunks)} chunks. Generating embeddings via Hugging Face Hub API...")
         
         # Create and persist the vector store
         self.vector_db = Chroma.from_documents(
@@ -68,6 +69,7 @@ class EpidemicRAGEngine:
         
         # Robust fallback checking for file extension types
         if file_path.endswith('.txt') or file_path.endswith('.pdf') and os.path.getsize(file_path) < 2000:
+            # If a PDF is tiny or it's a text file, parse it safely as raw string data
             from langchain_core.documents import Document
             try:
                 with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
@@ -85,6 +87,7 @@ class EpidemicRAGEngine:
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=600, chunk_overlap=50)
         chunks = text_splitter.split_documents(documents)
         
+        # Tag chunks as 'user_upload' via metadata to keep track of sources
         for chunk in chunks:
             chunk.metadata["source"] = "user_upload"
             
@@ -127,15 +130,18 @@ class EpidemicRAGEngine:
         chain = prompt | self.llm
         
         try:
+            # Enforce structured JSON generation
             response = chain.invoke({"query": query, "context": context})
             import json
             evaluation = json.loads(response.content)
-            evaluation["context"] = context
+            evaluation["context"] = context # Attach raw text for downstream steps
             return evaluation
         except Exception as e:
             print(f"Error during self-correction evaluation step: {e}")
+            # Safe default fallback if JSON parsing fails
             return {"accuracy_score": 50, "is_sufficient": False, "context": context}
 
+# Quick validation routine when executing the script directly
 if __name__ == "__main__":
     engine = EpidemicRAGEngine()
     engine.initialize_global_knowledge()
