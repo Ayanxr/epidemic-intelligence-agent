@@ -1,0 +1,9 @@
+streamlit==1.32.0
+langchain==0.1.12
+langchain-community==0.0.28
+langchain-groq==0.0.1
+langchain-chroma==0.1.0
+pypdf==4.1.0
+fastembed==0.2.2
+python-dotenv==1.0.1
+duckduckgo-search==5.3.1
