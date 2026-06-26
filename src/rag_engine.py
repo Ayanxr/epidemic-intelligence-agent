@@ -7,6 +7,9 @@ from langchain_chroma import Chroma
 from langchain_groq import ChatGroq
 from langchain_core.prompts import PromptTemplate
 
+# IMPORT CHROMA CONFIG TO DISABLE TELEMETRY
+from chromadb.config import Settings
+
 # Load environment variables from .env
 load_dotenv()
 
@@ -46,18 +49,23 @@ class EpidemicRAGEngine:
         
         print(f"🧩 Split guidelines into {len(chunks)} chunks. Generating embeddings...")
         
-        # Create and persist the vector store
+        # Create and persist the vector store with telemetry explicit disabled
         self.vector_db = Chroma.from_documents(
             documents=chunks,
             embedding=self.embeddings,
-            persist_directory=self.db_path
+            persist_directory=self.db_path,
+            client_settings=Settings(anonymized_telemetry=False)
         )
         print("✅ Global Knowledge Base successfully loaded and stored in Vector DB!")
 
     def load_user_pdf(self, file_path):
         """Dynamically ingests a local incident report (PDF or TXT) uploaded by a user."""
         if not self.vector_db:
-            self.vector_db = Chroma(persist_directory=self.db_path, embedding_function=self.embeddings)
+            self.vector_db = Chroma(
+                persist_directory=self.db_path, 
+                embedding_function=self.embeddings,
+                client_settings=Settings(anonymized_telemetry=False)
+            )
             
         print(f"📥 Processing user-uploaded report: {file_path}")
         
@@ -91,7 +99,11 @@ class EpidemicRAGEngine:
     def retrieve_context_with_score(self, query):
         """Retrieves documents, grades their alignment to the query, and generates an accuracy score."""
         if not self.vector_db:
-            self.vector_db = Chroma(persist_directory=self.db_path, embedding_function=self.embeddings)
+            self.vector_db = Chroma(
+                persist_directory=self.db_path, 
+                embedding_function=self.embeddings,
+                client_settings=Settings(anonymized_telemetry=False)
+            )
             
         # Fetch the top 4 most relevant chunks
         docs = self.vector_db.similarity_search(query, k=4)
