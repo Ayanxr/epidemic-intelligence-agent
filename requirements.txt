@@ -1,8 +1,10 @@
 streamlit
 langchain
+langchain-core>=0.2.0,<0.3.0
 langchain-community
 langchain-chroma
 langchain-groq
 chromadb
 pypdf
-huggingface_hub==0.24.2
+fastembed==0.2.2
+python-dotenv

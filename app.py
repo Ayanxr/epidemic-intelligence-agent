@@ -1,21 +1,17 @@
 import streamlit as st
 import os
-import tempfile
 from src.rag_engine import EpidemicRAGEngine
 from src.tools import PublicHealthSearchTool
 
-# Set up page configurations
 st.set_page_config(
     page_title="Episurv AI: Epidemic Intelligence Agent",
     page_icon="🦠",
     layout="wide"
 )
 
-# Initialize our components and cache them so they don't reload on every button click
 @st.cache_resource
 def get_systems():
     engine = EpidemicRAGEngine()
-    # Pre-load the data folder on startup
     engine.initialize_global_knowledge()
     search_tool = PublicHealthSearchTool()
     return engine, search_tool
@@ -23,7 +19,7 @@ def get_systems():
 try:
     rag_engine, web_tool = get_systems()
 except Exception as e:
-    st.error(f"Failed to initialize systems. Make sure your .env file has the correct GROQ_API_KEY. Error: {e}")
+    st.error(f"Failed to initialize systems. Check your GROQ_API_KEY. Error: {e}")
 
 # --- UI HEADER ---
 st.title("🦠 Episurv AI: Epidemic Intelligence Agent")
@@ -34,35 +30,30 @@ st.markdown("""
 
 st.divider()
 
-# --- SIDEBAR: USER FILE UPLOAD ---
+# --- SIDEBAR: FILE UPLOAD ---
 with st.sidebar:
     st.header("📥 Local Incident Reports")
-    st.write("Upload a situational clinic report or localized health dataset (PDF) to append to the active RAG vector database.")
+    st.write("Upload a situational clinic report or health dataset (PDF) to append to the active vector database.")
     
     uploaded_file = st.file_uploader("Choose a PDF file", type=["pdf"])
     
     if uploaded_file is not None:
         with st.spinner("Processing and embedding user document..."):
-            # Ensure a local temp directory exists safely on Windows
             temp_dir = "./temp_uploads"
             if not os.path.exists(temp_dir):
                 os.makedirs(temp_dir)
                 
-            # Create an explicit local filepath inside our project directory
             tmp_filepath = os.path.join(temp_dir, uploaded_file.name)
             
-            # Write the raw bytes directly into the file
             with open(tmp_filepath, "wb") as f:
                 f.write(uploaded_file.getvalue())
             
             try:
-                # Send to RAG engine to ingest the real file path safely
-                rag_engine.load_user_pdf(tmp_filepath)
+                rag_engine.load_user_file(tmp_filepath)
                 st.success(f"Successfully ingested: {uploaded_file.name}!")
             except Exception as e:
-                st.error(f"Error parsing PDF: {e}")
+                st.error(f"Error parsing file: {e}")
             finally:
-                # Clean up the file from our local folder right after parsing
                 if os.path.exists(tmp_filepath):
                     os.remove(tmp_filepath)
                     
@@ -74,7 +65,6 @@ user_query = st.text_input(
 
 if user_query:
     with st.spinner("Agent running evaluation routing loops..."):
-        # 1. Fetch from Vector DB and get the LLM-As-A-Judge Evaluation
         evaluation = rag_engine.retrieve_context_with_score(user_query)
         
         score = evaluation.get("accuracy_score", 0)
@@ -82,35 +72,27 @@ if user_query:
         reasoning = evaluation.get("reasoning", "No rationale provided.")
         pdf_context = evaluation.get("context", "")
 
-        # Display Metrics Dashboard
         col1, col2 = st.columns([1, 3])
         with col1:
             if is_sufficient:
-                st.metric(label="RAG Accuracy Score", value=f"{score}%", delta="Sufficient (PDF Content)")
+                st.metric(label="RAG Accuracy Score", value=f"{score}%", delta="Sufficient (Internal Data)")
             else:
                 st.metric(label="RAG Accuracy Score", value=f"{score}%", delta="- Insufficient (Fallback Triggered)", delta_color="inverse")
         with col2:
             st.info(f"**Auditor Reasoning:** {reasoning}")
 
-        # 2. Routing Logic based on Self-Correction Layer
         if is_sufficient:
             st.subheader("🤖 Agent Strategy: Pure Internal Retrieval")
-            st.write("Generating strategic response entirely based on verified internal guidelines...")
             final_context = pdf_context
         else:
             st.subheader("🌐 Agent Strategy: Triggering Web-Search Tool (Self-Correction)")
-            st.write("Internal documentation lacks exhaustive data. Executing query routing to verified medical domains...")
-            
-            # Run the search tool
             web_results = web_tool.search_verified_medical_web(user_query)
             
             with st.expander("See Raw Web Search Tool Output"):
                 st.write(web_results)
                 
-            # Combine internal fragments with live web details
             final_context = f"INTERNAL MANUAL CONTEXT:\n{pdf_context}\n\nLIVE VERIFIED WEB CONTEXT:\n{web_results}"
 
-        # 3. Final Strategic Generation Step
         generation_prompt = f"""
         You are an expert epidemic response strategist. Synthesize an actionable directive for health personnel using the following context.
         Ensure you outline symptom tracking criteria, isolation steps, or administrative instructions explicitly present in the data.
@@ -123,12 +105,9 @@ if user_query:
         Provide a clean, bulleted operational roadmap. If any data is unavailable, state it clearly.
         """
         
-        # Call Groq LLM to build the final response based on consolidated context
         final_response = rag_engine.llm.invoke(generation_prompt)
-        
         st.subheader("📋 Actionable Public Health Directive")
         st.markdown(final_response.content)
         
-        # Expandable debugging block for the resume presentation demo
         with st.expander("🔍 View Raw Vector DB Retrieved Chunks"):
             st.text(pdf_context if pdf_context else "No vector chunks found.")
