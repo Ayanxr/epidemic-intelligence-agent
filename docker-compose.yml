@@ -1,16 +1,16 @@
 version: '3.8'
 
 services:
-  epidemic-agent-app:
+  rag-agent:
     build: .
     container_name: epidemic_intelligence_container
     ports:
       - "8501:8501"
-    # Mount local directories so databases and user uploads sync safely with the container runtime
+    env_file:
+      - .env
     volumes:
       - ./chroma_db:/app/chroma_db
       - ./data:/app/data
-    # Automatically load your private GROQ key from your local environment file
-    env_file:
-      - .env
-    restart: unless-stopped
+      # Keeps FastEmbed weights cached locally so it never has to download them twice
+      - ./fastembed_cache:/root/.cache
+    restart: always

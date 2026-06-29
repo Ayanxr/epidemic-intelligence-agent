@@ -1,20 +1,31 @@
-# Use an official lightweight Python runtime
+# Use an official, lightweight Python runtime
 FROM python:3.11-slim
+
+# Set environment variables to prevent Python from writing pyc files and buffering stdout
+ENV PYTHONTONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
 # Set the working directory inside the container
 WORKDIR /app
 
-# Copy over the dependency definitions first to optimize caching
+# Install system dependencies needed for building packages
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    software-properties-common \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements first to leverage Docker caching layers
 COPY requirements.txt .
 
-# Install the exact Python packages specified without caching overhead
+# Install Python packages
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the entire project code directory structure into the container workspace
+# Copy the rest of your application code into the container
 COPY . .
 
-# Expose port 8501, which is the standard port Streamlit listens on
+# Expose the default Streamlit port
 EXPOSE 8501
 
-# Launch the app automatically when the container initializes
+# Run the streamlit application when the container launches
 CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]
