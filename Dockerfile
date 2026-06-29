@@ -2,23 +2,16 @@
 FROM python:3.11-slim
 
 # Set environment variables to prevent Python from writing pyc files and buffering stdout
-ENV PYTHONTONTWRITEBYTECODE=1
+ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
 # Set the working directory inside the container
 WORKDIR /app
 
-# Install system dependencies needed for building packages
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    curl \
-    software-properties-common \
-    && rm -rf /var/lib/apt/lists/*
-
 # Copy requirements first to leverage Docker caching layers
 COPY requirements.txt .
 
-# Install Python packages
+# Install Python packages natively
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the rest of your application code into the container
