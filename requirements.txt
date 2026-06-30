@@ -5,6 +5,7 @@ langchain-community
 langchain-chroma
 langchain-groq
 chromadb==0.5.0
+posthog<6.0.0
 pypdf
 fastembed==0.2.2
 python-dotenv
