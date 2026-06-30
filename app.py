@@ -12,7 +12,8 @@ st.set_page_config(
 @st.cache_resource
 def get_systems():
     engine = EpidemicRAGEngine()
-    engine.initialize_global_knowledge()
+    # Comment this out or remove it so it doesn't process PDFs during boot up!
+    # engine.initialize_global_knowledge() 
     search_tool = PublicHealthSearchTool()
     return engine, search_tool
 
